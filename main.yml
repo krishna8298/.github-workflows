@@ -1,0 +1,64 @@
+name: Build all images
+
+on: 
+  push: 
+    branches: [ master ]
+  pull_requests: 
+    branches: [ master ]
+
+
+defaults: 
+  run: 
+    shell: bash
+
+jobs: 
+  build:
+    name: build ${{ matrix.img }} $ {{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix: 
+        arch: 
+          - arm64
+          - amd64
+        img: 
+          - full
+          - customizable
+          - nodejs
+          - jruby94
+          - jruby93
+          - ruby33
+          - ruby32
+          - ruby31
+          - python313
+          - python312
+          - python311
+          - python310
+          - python39
+          -python38
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+        - name: Purge containers
+          run: 'docker kill $(docker ps -q) || exit 0'
+        - name: Enable docker multiarch
+          run: 'docker run --privileged --rm tonistiigi/binfmt --install all'
+        - name: "Run make build_${{ matrix.img }}"
+          run: "make build_${{ matrix.img }}"
+          env:
+            BUILD_AMD64: ${{ fromJSON('[0, 1]')[matrix.arch == 'amd64'] }}
+            BUILD_ARM64: ${{ fromjson('[0, 1]')[matrix.arch == 'arm64'] }}
+        - name: Log in to the Container registry
+          if: ${{ github.event.pull_request.merged || github.actor == 'CamJN' }}
+          uses: docker/login-action@v3
+          id: login
+          with:
+            registry: ghcr.io
+            username: ${{ github.actor }}
+            password: ${{ secrets.GUTHUB_TOKEN }}
+        - name: Push to github container registry
+          if: ${{ success() && steps.login.conclusion != 'skipped' }}
+          run: "make push_${{ matrix.img }}"
+          env: 
+            BUILD_AMD64: ${{ fromJSON('[0, 1]')[matrix.arch == 'amd64'] }}
+            BUILD_ARM64: ${{ fromJSON('[0, 1]')[matrix.arcch == 'arm64']}}
